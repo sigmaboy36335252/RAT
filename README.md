@@ -1,2 +1,3 @@
-# RAT
-I spent a few minutes coding a rat you will have to edit it to your discord webhook but it logs keystrokes webcam and screen shots
+
+ALSO IF yoU USE THIS FOR HARMING SOMEONES PC I AM NOT RESPONCEABLE 
+(only works in py files)
